@@ -8,6 +8,7 @@ import (
 
 	"github.com/gobuffalo/pop/v5"
 	"github.com/gofrs/uuid"
+	"github.com/netlify/gotrue/crypto"
 	"github.com/netlify/gotrue/storage"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
@@ -371,13 +372,17 @@ func FindUserByTokenAndTokenType(tx *storage.Connection, token string, tokenType
 
 // FindUserWithRefreshToken finds a user from the provided refresh token.
 func FindUserWithRefreshToken(tx *storage.Connection, token string) (*User, *RefreshToken, error) {
+	hashedToken := crypto.HashSHA224Base64(token)
+
 	refreshToken := &RefreshToken{}
-	if err := tx.Where("token = ?", token).First(refreshToken); err != nil {
+	if err := tx.Where("token = ? OR token = ?", hashedToken, token).First(refreshToken); err != nil {
 		if errors.Cause(err) == sql.ErrNoRows {
 			return nil, nil, RefreshTokenNotFoundError{}
 		}
 		return nil, nil, errors.Wrap(err, "error finding refresh token")
 	}
+
+	refreshToken.Token = token // database only holds the hashed token, so adding the original here
 
 	user, err := findUser(tx, "id = ?", refreshToken.UserID)
 	if err != nil {
