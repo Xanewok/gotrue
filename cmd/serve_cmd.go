@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"fmt"
+	"net"
 
 	"github.com/netlify/gotrue/api"
 	"github.com/netlify/gotrue/conf"
@@ -15,20 +15,26 @@ var serveCmd = cobra.Command{
 	Use:  "serve",
 	Long: "Start API server",
 	Run: func(cmd *cobra.Command, args []string) {
-		execWithConfig(cmd, serve)
+		serve(cmd.Context())
 	},
 }
 
-func serve(config *conf.GlobalConfiguration) {
+func serve(ctx context.Context) {
+	config, err := conf.LoadGlobal(configFile)
+	if err != nil {
+		logrus.WithError(err).Fatal("unable to load config")
+	}
+
 	db, err := storage.Dial(config)
 	if err != nil {
-		logrus.Fatalf("Error opening database: %+v", err)
+		logrus.Fatalf("error opening database: %+v", err)
 	}
 	defer db.Close()
 
-	api := api.NewAPIWithVersion(context.Background(), config, db, Version)
+	api := api.NewAPIWithVersion(ctx, config, db, Version)
 
-	l := fmt.Sprintf("%v:%v", config.API.Host, config.API.Port)
-	logrus.Infof("GoTrue API started on: %s", l)
-	api.ListenAndServe(l)
+	addr := net.JoinHostPort(config.API.Host, config.API.Port)
+	logrus.Infof("GoTrue API started on: %s", addr)
+
+	api.ListenAndServe(ctx, addr)
 }
